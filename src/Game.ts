@@ -43,17 +43,20 @@ export enum SyncMode {
   StateSync
 }
 
-
 export class Input {
   pressed: boolean;
   dir: Vector2;
-  constructor(dir: Vector2) {
-    this.pressed = false;
+  constructor(dir: Vector2, pressed: boolean = false) {
+    this.pressed = pressed;
     this.dir = dir;
   }
 
   update(val: boolean) {
     this.pressed = val;
+  }
+
+  clone(): Input {
+    return new Input(this.dir.clone(), this.pressed);
   }
 }
 
@@ -70,6 +73,10 @@ export class Command {
     this.input = input;
     this.ts = ts;
     this.dt = dt;
+  }
+
+  clone() {
+    return new Command(this.seq, this.ballId, this.input.clone(), this.ts, this.dt);
   }
 }
 

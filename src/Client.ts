@@ -16,7 +16,11 @@ export class MovingBallGameClient {
     new Input(new Vector2(0, 1)),
     new Input(new Vector2(1, 0))
   ];
+  keyDownHandler: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => {};
+  keyUpHanlder: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => {};
+  
   mode: SyncMode = SyncMode.LockStep;
+
 
   preTs: number = new Date().valueOf();
 
@@ -35,8 +39,6 @@ export class MovingBallGameClient {
     this.conn = new NetConn(++MovingBallGameClient.totClients, delay);
     this.ballId = this.conn.connId;
 
-    // this.game.addBall(new Ball(this.ballId, new Vector2(100, 100)));
-
     this.setControlls(this.controlls);
 
     //register the game loop
@@ -53,13 +55,17 @@ export class MovingBallGameClient {
     let curMsgBuf: NetMsg[] = [];
     Object.assign(curMsgBuf, this.conn.msgBuf);
     curMsgBuf.forEach(msg => {
+      //State sync
       if(msg.type == MsgType.State) {
         this.game.balls.clear();
         let balls: Ball[] = msg.data.balls;
         balls.forEach(ball => {
           this.game.balls.set(ball.id, ball);
         });
-        //TODO: currently we are just setting the state, more need to be done.
+      }
+      //Command sync
+      else if(msg.type == MsgType.Input) {
+        this.game.execute(msg.data);
       }
       this.conn.msgBuf.shift();
     });
@@ -67,19 +73,16 @@ export class MovingBallGameClient {
     //process the input
     this.inputs.forEach(input => {
       if (input.pressed) {
-        let cmd = new Command(++this.commandSeq, this.ballId, input, curTs, (curTs - this.preTs) / 1000.0);
+        let cmd = new Command(++this.commandSeq, this.ballId, input.clone(), curTs, (curTs - this.preTs) / 1000.0);
         this.game.execute(cmd);
         //inform the server
         if (this.serverConn !== undefined) {
           this.conn.send(new NetMsg(this.conn, this.serverConn, cmd));
         }
       }
-      
     });
     this.preTs = curTs;
   }
-
-
 
   //Generate listener to the input events
   private genInputHandler(down: boolean): (ev: KeyboardEvent) => void {
@@ -94,9 +97,13 @@ export class MovingBallGameClient {
   }
 
   setControlls(c: [number, number, number, number]) {
+    document.removeEventListener('keydown', this.keyDownHandler);
+    document.removeEventListener('keyup', this.keyDownHandler);
     this.controlls = c;
-    document.body.onkeydown = this.genInputHandler(true);
-    document.body.onkeyup = this.genInputHandler(false);
+    this.keyDownHandler = this.genInputHandler(true);
+    this.keyUpHanlder = this.genInputHandler(false);
+    document.addEventListener('keydown', this.keyDownHandler);
+    document.addEventListener('keyup', this.keyUpHanlder);
   }
 
   start() {

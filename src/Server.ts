@@ -16,20 +16,24 @@ export class MovingBallGameServer {
     }, 1000.0 / this.tickRate);
   }
 
-  connect(client: MovingBallGameClient) {
+  connect(client: MovingBallGameClient, color: Vector3 = new Vector3(10, 10, 100), pos: Vector2 = new Vector2(100, 100)) {
     this.clientConns.push(client.conn);
     client.serverConn = this.conn;
-    this.game.addBall(new Ball(client.conn.connId, new Vector2(100, 100), new Vector3(10, 10, 100)));
+    this.game.addBall(new Ball(client.conn.connId, pos, color));
 
-    let balls: Ball[] = [];
-    //Since we are working on the same memory, deep copy is necessary
-    this.game.balls.forEach(ball => {
-      balls.push(ball.clone());
-    })
+    //Send the new client info to every client
+    this.clientConns.forEach(clientConn => {
+      let balls: Ball[] = [];
+      //Since we are working on the same memory, deep copy is necessary
+      this.game.balls.forEach(ball => {
+        balls.push(ball.clone());
+      })
 
-    let state = new State(balls, new Date().valueOf());
-    this.conn.send(new NetMsg(this.conn, client.conn, state, MsgType.State));
-    //TODO: the state should be sent to every client
+      let state = new State(balls, new Date().valueOf());
+
+      this.conn.send(new NetMsg(this.conn, clientConn, state, MsgType.State));
+    });
+
   }
 
   tick() {
@@ -42,19 +46,18 @@ export class MovingBallGameServer {
 
     //replay all the commands
     curMsgBuf.forEach(msg => {
-      console.log(msg);
+      // console.log(msg);
       this.game.execute(msg.data);
-      this.clientConns.forEach(client => {
-        this.conn.send(new NetMsg(this.conn, client, msg));
+      this.clientConns.forEach(clientConn => {
+        if(msg.from !== clientConn) {
+          this.conn.send(new NetMsg(this.conn, clientConn, msg.data));
+        }
       });
       //this msg is received, remove it now
       this.conn.msgBuf.shift();
     });
-
-    
-
   }
-  
+
   start() {
     this.game.start();
   }
