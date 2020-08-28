@@ -1,32 +1,7 @@
-import { Vector2, Vector3, MovingBallGame, Ball } from './Game.js';
-import { NetConn, NetMsg } from './Network.js';
+import { Vector2, Vector3, MovingBallGame, Ball, Input, SyncMode, Command } from './Game.js';
+import { NetConn, NetMsg, MsgType } from './Network.js';
 
-enum SyncMode {
-  LockStep,
-  StateSync
-}
 
-class Input {
-  pressed: boolean;
-  dir: Vector2;
-  constructor(dir: Vector2) {
-    this.pressed = false;
-    this.dir = dir;
-  }
-
-  update(val: boolean) {
-    this.pressed = val;
-  }
-}
-
-class Command {
-  input: Input;
-  ts: number;
-  constructor(input: Input, ts: number) {
-    this.input = input;
-    this.ts = ts;
-  }
-}
 
 export class MovingBallGameClient {
   static totClients: number = 0;
@@ -46,34 +21,64 @@ export class MovingBallGameClient {
   preTs: number = new Date().valueOf();
 
   conn: NetConn;
+  serverConn: NetConn | undefined;
+  commandSeq: number = 0;
   commands: Command[] = [];
+  ballId: number;
 
   // keyUpHandler: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => {};
   // keyDownHandler: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => {};
 
-  constructor(game: MovingBallGame) {
+  constructor(game: MovingBallGame, delay: number = 0) {
     this.game = game;
     this.paused = true;
-    this.game.addBall(new Ball(1, new Vector2(100, 100)));
+    this.conn = new NetConn(++MovingBallGameClient.totClients, delay);
+    this.ballId = this.conn.connId;
+
+    // this.game.addBall(new Ball(this.ballId, new Vector2(100, 100)));
+
     this.setControlls(this.controlls);
+
     //register the game loop
     this.game.update = () => {
       this.update();
     }
-
-    this.conn = new NetConn(++MovingBallGameClient.totClients);
   }
 
   update() {
     let curTs: number = new Date().valueOf();
 
+    //process the msg from the network
+    //first make a deep copy
+    let curMsgBuf: NetMsg[] = [];
+    Object.assign(curMsgBuf, this.conn.msgBuf);
+    curMsgBuf.forEach(msg => {
+      if(msg.type == MsgType.State) {
+        this.game.balls.clear();
+        let balls: Ball[] = msg.data.balls;
+        balls.forEach(ball => {
+          this.game.balls.set(ball.id, ball);
+        });
+        //TODO: currently we are just setting the state, more need to be done.
+      }
+      this.conn.msgBuf.shift();
+    });
+
+    //process the input
     this.inputs.forEach(input => {
       if (input.pressed) {
-        this.game.moveBallBySpeed(1, input.dir, (curTs - this.preTs) / 1000.0);
+        let cmd = new Command(++this.commandSeq, this.ballId, input, curTs, (curTs - this.preTs) / 1000.0);
+        this.game.execute(cmd);
+        //inform the server
+        if (this.serverConn !== undefined) {
+          this.conn.send(new NetMsg(this.conn, this.serverConn, cmd));
+        }
       }
+      
     });
     this.preTs = curTs;
   }
+
 
 
   //Generate listener to the input events

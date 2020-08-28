@@ -25,15 +25,21 @@ function Network() {
   }
 }
 
+export enum MsgType {
+  State,
+  Input
+}
 
 export class NetMsg {
   from: NetConn;
   to: NetConn;
   data: any;
-  constructor(from: NetConn, to: NetConn, data: any = null) {
+  type: MsgType;
+  constructor(from: NetConn, to: NetConn, data: any = null, type: MsgType = MsgType.Input) {
     this.from = from;
     this.to = to;
     this.data = data;
+    this.type = type;
   }
 
   toString() {
@@ -48,10 +54,10 @@ export class NetMsg {
 export class NetConn {
   termId: number = -1;
   connId: number = -1;
-  delay: number = 100;
+  delay: number;
   receiveHandlers: Function[] = [];
   msgBuf: NetMsg[] = [];
-  constructor(termId: number, delay: number = 100) {
+  constructor(termId: number, delay: number = 0) {
     this.termId = termId;
     this.delay = delay;
     net.addConn(this);

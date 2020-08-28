@@ -6,6 +6,11 @@ export class Vector2 {
     this.x = x;
     this.y = y;
   }
+
+  clone(): Vector2 {
+    return new Vector2(this.x, this.y);
+  }
+
   add(rhs: Vector2): Vector2 {
     return new Vector2(this.x + rhs.x, this.y + rhs.y);
   }
@@ -24,34 +29,56 @@ export class Vector3 {
     return new Vector3(this.x + rhs.x, this.y + rhs.y, this.z + rhs.z);
   }
 
+  clone(): Vector3 {
+    return new Vector3(this.x, this.y, this.z);
+  }
+
   toColorString(): string {
     return 'rgb(' + this.x + ',' + this.y + ',' + this.z + ')';
   }
 }
 
-class Canvas {
-  ctx: CanvasRenderingContext2D;
-  height: number;
-  width: number;
-  bgColor: Vector3;
-  constructor(canvas: any) {
-    this.ctx = canvas.getContext('2d');
-    this.height = canvas.height;
-    this.width = canvas.width;
-    this.bgColor = new Vector3(100, 100, 100);
+export enum SyncMode {
+  LockStep,
+  StateSync
+}
+
+
+export class Input {
+  pressed: boolean;
+  dir: Vector2;
+  constructor(dir: Vector2) {
+    this.pressed = false;
+    this.dir = dir;
   }
 
-  drawBg() {
-    this.ctx.fillStyle = this.bgColor.toColorString();
-    this.ctx.fillRect(0, 0, this.width, this.height);
+  update(val: boolean) {
+    this.pressed = val;
   }
+}
 
-  drawCicle(pos: Vector2, radius: number, color: Vector3) {
-    this.ctx.fillStyle = color.toColorString();
-    this.ctx.beginPath();
-    this.ctx.arc(pos.x, pos.y, radius, 0, 180);
-    this.ctx.closePath();
-    this.ctx.fill();
+export class Command {
+  seq: number;
+  input: Input;
+  ballId: number;
+  ts: number;
+  dt: number;
+  
+  constructor(seq: number, ballId: number, input: Input, ts: number, dt: number) {
+    this.seq = seq;
+    this.ballId = ballId;
+    this.input = input;
+    this.ts = ts;
+    this.dt = dt;
+  }
+}
+
+export class State {
+  balls: Ball[];
+  ts: number;
+  constructor(balls: Ball[], ts: number) {
+    this.balls = balls;
+    this.ts = ts;
   }
 }
 
@@ -65,6 +92,13 @@ export class Ball {
     this.id = id;
     this.pos = pos;
     this.color = color;
+  }
+
+  clone(): Ball {
+    let ret = new Ball(this.id, this.pos.clone(), this.color.clone());
+    ret.radius = this.radius;
+    ret.speed = this.speed;
+    return ret;
   }
 }
 
@@ -107,6 +141,11 @@ export class MovingBallGame {
   moveBallByPos(id: number, move: Vector2) {
     this.getBall(id).pos = this.getBall(id).pos.add(move);
   }
+
+  execute(cmd: Command) {
+    this.moveBallBySpeed(cmd.ballId, cmd.input.dir, cmd.dt);
+  }
+
   draw() {
     this.canvas.drawBg();
     this.balls.forEach((ball) => {
@@ -120,7 +159,7 @@ export class MovingBallGame {
     this.interval = setInterval(() => {
       this.update();
       this.draw();
-    }, 1000 / this.frameRate);
+    }, 1000.0 / this.frameRate);
   }
 
   pause() {
@@ -128,5 +167,31 @@ export class MovingBallGame {
       clearInterval(this.interval);
       this.interval = -1;
     }
+  }
+}
+
+class Canvas {
+  ctx: CanvasRenderingContext2D;
+  height: number;
+  width: number;
+  bgColor: Vector3;
+  constructor(canvas: any) {
+    this.ctx = canvas.getContext('2d');
+    this.height = canvas.height;
+    this.width = canvas.width;
+    this.bgColor = new Vector3(100, 100, 100);
+  }
+
+  drawBg() {
+    this.ctx.fillStyle = this.bgColor.toColorString();
+    this.ctx.fillRect(0, 0, this.width, this.height);
+  }
+
+  drawCicle(pos: Vector2, radius: number, color: Vector3) {
+    this.ctx.fillStyle = color.toColorString();
+    this.ctx.beginPath();
+    this.ctx.arc(pos.x, pos.y, radius, 0, 180);
+    this.ctx.closePath();
+    this.ctx.fill();
   }
 }

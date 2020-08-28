@@ -1,8 +1,13 @@
 import { NetConn, NetMsg } from './Network.js';
 import { MovingBallGame, Ball, Vector2, Vector3 } from './Game.js';
 import { MovingBallGameClient } from './Client.js';
+import { MovingBallGameServer } from './Server.js';
 
-let canvas = document.querySelector('#canvas1');
-let game = new MovingBallGameClient(new MovingBallGame(canvas));
+let client1 = new MovingBallGameClient(new MovingBallGame(document.querySelector('#canvas1')), 250);
 
-game.start();
+client1.start();
+
+let server = new MovingBallGameServer(new MovingBallGame(document.querySelector('#canvas2')));
+
+server.connect(client1);
+server.start();
