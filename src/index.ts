@@ -1,8 +1,8 @@
-import { NetConnection } from './Network.js'
+import { NetConn, NetMsg } from './Network.js';
+import { MovingBallGame, Ball, Vector2, Vector3 } from './Game.js';
+import { MovingBallGameClient } from './Client.js';
 
-new NetConnection("hello");
+let canvas = document.querySelector('#canvas1');
+let game = new MovingBallGameClient(new MovingBallGame(canvas));
 
-export const sum = (a: number, b: number) => {
-  return a + b;
-};
- 
+game.start();

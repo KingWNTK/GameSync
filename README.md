@@ -7,10 +7,11 @@ This is a project for game developers who are having hard time understanding the
 
 ```
 npm install
-npx tsc --outDir ../dst
+npx tsc
 npx http-server
 ```
 
+StateSync => 
 
 
 
