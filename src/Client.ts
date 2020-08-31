@@ -1,54 +1,59 @@
-import { Vector2, Vector3, MovingBallGame, Ball, Input, SyncMode, Command } from './Game.js';
+import { Vector2, Vector3, MovingBallGame, Ball, WASDInputs, SyncMode, MoveBallCommand } from './Game.js';
 import { NetConn, NetMsg, MsgType } from './Network.js';
-
-
 
 export class MovingBallGameClient {
   static totClients: number = 0;
+
+  mode: SyncMode = SyncMode.LockStep;
+
   game: MovingBallGame;
   paused: boolean;
+
   //WASD keycodes
   controlls: [number, number, number, number] = [87, 65, 83, 68];
   //WASD directions, since they are decoupled from controlls, its easy to remap controlls
-  inputs: [Input, Input, Input, Input] = [
-    new Input(new Vector2(0, -1)),
-    new Input(new Vector2(-1, 0)),
-    new Input(new Vector2(0, 1)),
-    new Input(new Vector2(1, 0))
-  ];
-  keyDownHandler: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => {};
-  keyUpHanlder: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => {};
-  
-  mode: SyncMode = SyncMode.LockStep;
-
+  inputs: WASDInputs = [false, false, false, false];
+  keyDownHandler: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => { };
+  keyUpHanlder: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => { };
 
   preTs: number = new Date().valueOf();
 
   conn: NetConn;
   serverConn: NetConn | undefined;
-  commandSeq: number = 0;
-  commands: Command[] = [];
+  simFrameCnt: number = 0;
+  simmedFrameCnt: number = 0;
+  commands: MoveBallCommand[] = [];
+  //Id of the player controlled ball
   ballId: number;
 
-  // keyUpHandler: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => {};
-  // keyDownHandler: (ev: KeyboardEvent) => void = (ev: KeyboardEvent) => {};
+  simRate: number = 60;
 
   constructor(game: MovingBallGame, delay: number = 0) {
     this.game = game;
     this.paused = true;
     this.conn = new NetConn(++MovingBallGameClient.totClients, delay);
     this.ballId = this.conn.connId;
-
     this.setControlls(this.controlls);
 
-    //register the game loop
+    //register the render loop
     this.game.update = () => {
       this.update();
-    }
+    };
+
+    //register the sim loop
+    this.game.simTick = () => {
+      this.simTick();
+    };
   }
 
-  update() {
-    let curTs: number = new Date().valueOf();
+  simTick() {
+    this.simFrameCnt++;
+    //processInput
+    let cmd = new MoveBallCommand(this.simFrameCnt, this.ballId, this.inputs);
+    this.commands.push(cmd);
+    if (this.serverConn !== undefined) {
+      this.conn.send(new NetMsg(this.conn, this.serverConn, this.simFrameCnt, cmd));
+    }
 
     //process the msg from the network
     //first make a deep copy
@@ -56,7 +61,7 @@ export class MovingBallGameClient {
     Object.assign(curMsgBuf, this.conn.msgBuf);
     curMsgBuf.forEach(msg => {
       //State sync
-      if(msg.type == MsgType.State) {
+      if (msg.type == MsgType.AllBallsState) {
         this.game.balls.clear();
         let balls: Ball[] = msg.data.balls;
         balls.forEach(ball => {
@@ -64,23 +69,16 @@ export class MovingBallGameClient {
         });
       }
       //Command sync
-      else if(msg.type == MsgType.Input) {
+      else if (msg.type == MsgType.MoveBallCommand) {
+
         this.game.execute(msg.data);
       }
       this.conn.msgBuf.shift();
     });
+  }
 
-    //process the input
-    this.inputs.forEach(input => {
-      if (input.pressed) {
-        let cmd = new Command(++this.commandSeq, this.ballId, input.clone(), curTs, (curTs - this.preTs) / 1000.0);
-        this.game.execute(cmd);
-        //inform the server
-        if (this.serverConn !== undefined) {
-          this.conn.send(new NetMsg(this.conn, this.serverConn, cmd));
-        }
-      }
-    });
+  update() {
+    let curTs: number = new Date().valueOf();
     this.preTs = curTs;
   }
 
@@ -89,7 +87,7 @@ export class MovingBallGameClient {
     return (event: KeyboardEvent) => {
       this.controlls.forEach((val, idx) => {
         if (val == event.keyCode) {
-          this.inputs[idx].update(val == event.keyCode && down);
+          this.inputs[idx] = down;
           return;
         }
       });

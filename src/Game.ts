@@ -1,4 +1,3 @@
-
 export class Vector2 {
   x: number;
   y: number;
@@ -60,27 +59,45 @@ export class Input {
   }
 }
 
-export class Command {
-  seq: number;
-  input: Input;
+// export class Command {
+//   seq: number;
+//   input: Input;
+//   ballId: number;
+//   ts: number;
+//   dt: number;
+
+//   constructor(seq: number, ballId: number, input: Input, ts: number, dt: number) {
+//     this.seq = seq;
+//     this.ballId = ballId;
+//     this.input = input;
+//     this.ts = ts;
+//     this.dt = dt;
+//   }
+
+//   clone() {
+//     return new Command(this.seq, this.ballId, this.input.clone(), this.ts, this.dt);
+//   }
+// }
+
+export type WASDInputs = [boolean, boolean, boolean, boolean];
+let defaultWASDInputs: WASDInputs = [false, false, false, false];
+
+export class MoveBallCommand {
+  simFrame: number;
+  inputs: WASDInputs;
   ballId: number;
-  ts: number;
-  dt: number;
-  
-  constructor(seq: number, ballId: number, input: Input, ts: number, dt: number) {
-    this.seq = seq;
+  constructor(simFrame: number, ballId: number, inputs: WASDInputs = defaultWASDInputs) {
+    this.simFrame = simFrame;
     this.ballId = ballId;
-    this.input = input;
-    this.ts = ts;
-    this.dt = dt;
+    this.inputs = Object.assign([], inputs);
   }
 
   clone() {
-    return new Command(this.seq, this.ballId, this.input.clone(), this.ts, this.dt);
+    return new MoveBallCommand(this.simFrame, this.ballId, this.inputs);
   }
 }
 
-export class State {
+export class AllBallsState {
   balls: Ball[];
   ts: number;
   constructor(balls: Ball[], ts: number) {
@@ -95,6 +112,7 @@ export class Ball {
   color: Vector3;
   radius: number = 30;
   speed: number = 100;
+
   constructor(id: number, pos: Vector2 = new Vector2(0, 0), color: Vector3 = new Vector3(0, 0, 0)) {
     this.id = id;
     this.pos = pos;
@@ -110,10 +128,20 @@ export class Ball {
 }
 
 export class MovingBallGame {
+  static inputDirs: [Vector2, Vector2, Vector2, Vector2] = [
+    new Vector2(0, -1),
+    new Vector2(-1, 0),
+    new Vector2(0, 1),
+    new Vector2(1, 0)
+  ];
   canvas: Canvas;
   balls: Map<number, Ball> = new Map<number, Ball>();
   frameRate: number = 60;
-  interval: number = -1;
+  simRate: number = 60;
+
+  renderInterval: number = -1;
+  simInterval: number = -1;
+
   constructor(canvas: any) {
     this.canvas = new Canvas(canvas);
     this.canvas.drawBg();
@@ -149,9 +177,14 @@ export class MovingBallGame {
     this.getBall(id).pos = this.getBall(id).pos.add(move);
   }
 
-  execute(cmd: Command) {
-    this.moveBallBySpeed(cmd.ballId, cmd.input.dir, cmd.dt);
+  execute(cmd: MoveBallCommand) {
+    cmd.inputs.forEach((val, idx) => {
+      if (val === true) {
+        this.moveBallBySpeed(cmd.ballId, MovingBallGame.inputDirs[idx], 1.0 / this.simRate);
+      }
+    });
   }
+
 
   draw() {
     this.canvas.drawBg();
@@ -162,17 +195,27 @@ export class MovingBallGame {
 
   update() { }
 
+  simTick() { }
+
   start() {
-    this.interval = setInterval(() => {
+    this.renderInterval = setInterval(() => {
       this.update();
       this.draw();
     }, 1000.0 / this.frameRate);
+
+    this.simInterval = setInterval(() => {
+      this.simTick();
+    }, 1000.0 / this.simRate);
   }
 
   pause() {
-    if (this.interval !== -1) {
-      clearInterval(this.interval);
-      this.interval = -1;
+    if (this.renderInterval !== -1) {
+      clearInterval(this.renderInterval);
+      this.renderInterval = -1;
+    }
+    if(this.simInterval !== -1) {
+      clearInterval(this.simInterval);
+      this.simInterval = -1;
     }
   }
 }

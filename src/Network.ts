@@ -3,7 +3,6 @@ export const net = Network();
 function Network() {
   let allConns = new Map();
   let connId = 0;
-  let ret: Object;
   return {
     addConn: (conn: NetConn) => {
       allConns.set(connId, conn);
@@ -26,28 +25,43 @@ function Network() {
 }
 
 export enum MsgType {
-  State,
-  Input
+  AllBallsState,
+  MoveBallCommand
 }
 
+// export class NetMsg {
+//   from: NetConn;
+//   to: NetConn;
+//   data: any;
+//   type: MsgType;
+//   constructor(from: NetConn, to: NetConn, data: any = null, type: MsgType = MsgType.Input) {
+//     this.from = from;
+//     this.to = to;
+//     this.data = data;
+//     this.type = type;
+//   }
+
+//   toString() {
+//     return this.data;
+//   }
+
+//   print() {
+//     console.log(this.data);
+//   }
+// }
+
 export class NetMsg {
+  simFrame: number;
   from: NetConn;
   to: NetConn;
   data: any;
   type: MsgType;
-  constructor(from: NetConn, to: NetConn, data: any = null, type: MsgType = MsgType.Input) {
+  constructor(from: NetConn, to: NetConn, simFrame: number, data: any, type: MsgType = MsgType.MoveBallCommand) {
     this.from = from;
     this.to = to;
+    this.simFrame = simFrame;
     this.data = data;
     this.type = type;
-  }
-
-  toString() {
-    return this.data;
-  }
-
-  print() {
-    console.log(this.data);
   }
 }
 

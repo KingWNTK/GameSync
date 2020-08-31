@@ -1,6 +1,8 @@
-import { Vector2, Vector3, MovingBallGame, Ball, State } from './Game.js';
+import { Vector2, Vector3, MovingBallGame, Ball, AllBallsState, MoveBallCommand } from './Game.js';
 import { NetConn, NetMsg, MsgType } from './Network.js';
 import { MovingBallGameClient } from './Client.js';
+
+
 
 export class MovingBallGameServer {
   static totServers: number = 0;
@@ -29,9 +31,9 @@ export class MovingBallGameServer {
         balls.push(ball.clone());
       })
 
-      let state = new State(balls, new Date().valueOf());
+      let state = new AllBallsState(balls, new Date().valueOf());
 
-      this.conn.send(new NetMsg(this.conn, clientConn, state, MsgType.State));
+      this.conn.send(new NetMsg(this.conn, clientConn, 0, state, MsgType.AllBallsState));
     });
 
   }
@@ -42,16 +44,14 @@ export class MovingBallGameServer {
     Object.assign(curMsgBuf, this.conn.msgBuf);
 
     //sort these commands
-    curMsgBuf.sort((lhs, rhs) => lhs.data.ts - rhs.data.ts);
+    curMsgBuf.sort((lhs, rhs) => lhs.simFrame == rhs.simFrame ? lhs.simFrame - rhs.simFrame : lhs.from.connId - rhs.from.connId);
 
     //replay all the commands
     curMsgBuf.forEach(msg => {
       // console.log(msg);
       this.game.execute(msg.data);
       this.clientConns.forEach(clientConn => {
-        if(msg.from !== clientConn) {
-          this.conn.send(new NetMsg(this.conn, clientConn, msg.data));
-        }
+          this.conn.send(new NetMsg(this.conn, clientConn, msg.simFrame, msg.data));
       });
       //this msg is received, remove it now
       this.conn.msgBuf.shift();

@@ -3,7 +3,7 @@
   "compilerOptions": {
     "module": "esnext",
     "lib": ["dom", "esnext"],
-    "importHelpers": true,
+    "importHelpers": false,
     "declaration": true,
     "sourceMap": true,
     "outDir": "./lib",
@@ -13,8 +13,9 @@
     "noUnusedParameters": false,
     "noImplicitReturns": true,
     "noFallthroughCasesInSwitch": true,
-    "moduleResolution": "node",
+    "moduleResolution":  "node",
     "jsx": "react",
-    "esModuleInterop": true
+    "esModuleInterop": true,
   }
+
 }

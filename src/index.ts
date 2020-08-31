@@ -1,4 +1,3 @@
-import { NetConn, NetMsg } from './Network.js';
 import { MovingBallGame, Ball, Vector2, Vector3 } from './Game.js';
 import { MovingBallGameClient } from './Client.js';
 import { MovingBallGameServer } from './Server.js';
