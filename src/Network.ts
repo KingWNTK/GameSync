@@ -30,15 +30,16 @@ export enum MsgType {
 }
 
 export class NetMsg {
-    simFrame: number;
+    frame: number;
     from: NetConn;
     to: NetConn;
     data: any;
     type: MsgType;
+    ack: number = 0;
     constructor(from: NetConn, to: NetConn, simFrame: number, data: any, type: MsgType = MsgType.MoveBallCommand) {
         this.from = from;
         this.to = to;
-        this.simFrame = simFrame;
+        this.frame = simFrame;
         this.data = data;
         this.type = type;
     }

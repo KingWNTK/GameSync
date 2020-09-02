@@ -13,6 +13,11 @@ export class Vector2 {
     add(rhs: Vector2): Vector2 {
       return new Vector2(this.x + rhs.x, this.y + rhs.y);
     }
+
+    set(rhs: Vector2) {
+        this.x = rhs.x;
+        this.y = rhs.y;
+    }
   }
   
   export class Vector3 {

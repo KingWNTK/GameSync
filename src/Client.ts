@@ -1,53 +1,7 @@
-import { MovingBallGame, WASDInputs, MoveBallCommand, AllBallsState } from './Game.js';
+import { MovingBallGame, WASDInputs, MoveBallCommand, SimLayer } from './Game.js';
 import { NetConn, NetMsg, MsgType } from './Network.js';
+import { Vector2 } from './common/Util.js';
 
-
-
-class SimLayer {
-    state: AllBallsState = new AllBallsState();
-    simRate: number = 0;
-    playerCnt: number = 0;
-
-    frameCnt: number = 0;
-    cmdBuf: Map<number, Map<number, MoveBallCommand>> = new Map<number, Map<number, MoveBallCommand>>();
-
-    isInitialized: boolean = false;
-
-    constructor() {
-
-    }
-
-    init(simRate: number, state: AllBallsState, playerCnt: number) {
-        this.isInitialized = true;
-        this.simRate = simRate;
-        this.state = state;
-        this.playerCnt = playerCnt;
-    }
-
-    simTick() {
-        if (!this.isInitialized || !this.canProceed()) return;
-        this.frameCnt++;
-        this.cmdBuf.get(this.frameCnt)?.forEach(cmd => {
-            this.state.execute(cmd, 1.0 / this.simRate);
-        });
-        this.cmdBuf.delete(this.frameCnt);
-    }
-
-    addCmd(cmd: MoveBallCommand) {
-        if (cmd.simFrame <= this.frameCnt) return;
-        if (!this.cmdBuf.has(cmd.simFrame)) {
-            this.cmdBuf.set(cmd.simFrame, new Map<number, MoveBallCommand>());
-        }
-        this.cmdBuf.get(cmd.simFrame)?.set(cmd.ballId, cmd);
-
-    }
-    canProceed(): boolean {
-        if (this.cmdBuf.get(this.frameCnt + 1)?.size !== this.playerCnt) {
-            return false;
-        }
-        return true;
-    }
-}
 
 export class MovingBallGameClient {
     static totClients: number = 0;
@@ -56,6 +10,9 @@ export class MovingBallGameClient {
     game: MovingBallGame;
     //The simulation(logic) layer of the game
     simLayer: SimLayer;
+
+    //All the synchronization techniques we are using
+    usePrediction: boolean = false;
 
     paused: boolean;
 
@@ -70,11 +27,12 @@ export class MovingBallGameClient {
     //Network
     conn: NetConn;
     serverConn: NetConn | undefined;
-    simFrameCnt: number = 0;
-    simmedFrameCnt: number = 0;
+    frameCnt: number = 0;
+    pendingCommands: MoveBallCommand[] = [];
 
     //Id of the player controlled ball
     ballId: number;
+
 
     constructor(game: MovingBallGame, delay: number = 0) {
         this.game = game;
@@ -86,7 +44,9 @@ export class MovingBallGameClient {
 
         //register the render loop
         this.game.update = () => {
-            this.update();
+            if(this.simLayer.isInitialized) {
+                this.update();
+            }
         };
 
         //register the sim loop
@@ -94,15 +54,28 @@ export class MovingBallGameClient {
             this.simLayer.simTick();
             this.simTick();
         };
+
+        this.game.afterRender = () => {
+            this.game.drawText("Render Frame: " + this.frameCnt, new Vector2(10, 30));
+            this.game.drawText("Logic Frame: " + this.simLayer.frameCnt, new Vector2(10, 60));
+        }
     }
 
     simTick() {
-        this.simFrameCnt++;
+        
         //processInput
-        let cmd = new MoveBallCommand(this.simFrameCnt, this.ballId, this.inputs);
-        this.simLayer.addCmd(cmd);
+        let cmd = new MoveBallCommand(this.frameCnt, this.ballId, this.inputs);
+        //this.simLayer.addCmd(cmd);
         if (this.serverConn !== undefined) {
-            this.conn.send(new NetMsg(this.conn, this.serverConn, this.simFrameCnt, cmd));
+            let len = this.pendingCommands.length;
+            if(len > 0 && this.pendingCommands[len - 1].frame == cmd.frame) {
+                let oldCmd = this.pendingCommands[0];
+                this.conn.send(new NetMsg(this.conn, this.serverConn, oldCmd.frame, oldCmd));
+            }
+            else {
+                this.pendingCommands.push(cmd);
+                this.conn.send(new NetMsg(this.conn, this.serverConn, cmd.frame, cmd));
+            }
         }
 
         //process the msg from the network
@@ -113,21 +86,31 @@ export class MovingBallGameClient {
             //Initialize
             if (msg.type == MsgType.AllBallsState) {
                 this.game.state = msg.data.clone();
-                this.simLayer.init(this.game.simRate, this.game.state.clone(), 2);
+                this.simLayer.init(this.game.simRate, this.game.state.clone(), this.game.state.balls.size);
             }
-            //Command sync
+            //Command
             else if (msg.type == MsgType.MoveBallCommand) {
                 // this.game.execute(msg.data);
-                this.simLayer.addCmd(msg.data);
+                while(this.pendingCommands.length > 0 && msg.frame >= this.pendingCommands[0].frame) {
+                    this.pendingCommands.shift();
+                }
+                msg.data.forEach((cmd: MoveBallCommand) => {
+                    this.simLayer.addCmd(cmd);
+                });
             }
             this.conn.msgBuf.shift();
         });
+
+        if(this.frameCnt <= this.simLayer.frameCnt + 20) {
+            this.frameCnt++;
+        }
     }
 
     update() {
+        
         // let curTs: number = new Date().valueOf();
         // this.preTs = curTs;
-        this.game.state = this.simLayer.state;
+        this.game.state.updateTo(this.simLayer.state);
     }
 
     //Generate listener to the input events

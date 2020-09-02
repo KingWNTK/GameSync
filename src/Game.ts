@@ -4,17 +4,17 @@ export type WASDInputs = [boolean, boolean, boolean, boolean];
 let defaultWASDInputs: WASDInputs = [false, false, false, false];
 
 export class MoveBallCommand {
-    simFrame: number;
+    frame: number;
     inputs: WASDInputs;
     ballId: number;
     constructor(simFrame: number, ballId: number, inputs: WASDInputs = defaultWASDInputs) {
-        this.simFrame = simFrame;
+        this.frame = simFrame;
         this.ballId = ballId;
         this.inputs = Object.assign([], inputs);
     }
 
     clone() {
-        return new MoveBallCommand(this.simFrame, this.ballId, this.inputs);
+        return new MoveBallCommand(this.frame, this.ballId, this.inputs);
     }
 }
 
@@ -41,6 +41,7 @@ export class Ball {
 
 export class AllBallsState {
     balls: Map<number, Ball>;
+
     constructor(balls: Map<number, Ball> = new Map<number, Ball>()) {
         this.balls = balls;
     }
@@ -84,12 +85,72 @@ export class AllBallsState {
         });
     }
 
+    updateTo(newState: AllBallsState) {
+        newState.balls.forEach(ball => {
+            this.getBall(ball.id).pos.set(ball.pos);
+        });
+    }
+
     clone(): AllBallsState {
         let bs = new Map<number, Ball>();
         this.balls.forEach(b => {
             bs.set(b.id, b.clone());
         });
         return new AllBallsState(bs);
+    }
+}
+
+export class SimLayer {
+    state: AllBallsState = new AllBallsState();
+    simRate: number = 0;
+    playerCnt: number = 0;
+
+    frameCnt: number = 0;
+    cmdBuf: Map<number, Map<number, MoveBallCommand>> = new Map<number, Map<number, MoveBallCommand>>();
+
+    isInitialized: boolean = false;
+
+    constructor() {
+
+    }
+
+    init(simRate: number, state: AllBallsState, playerCnt: number) {
+        this.isInitialized = true;
+        this.simRate = simRate;
+        this.state = state;
+        this.playerCnt = playerCnt;
+    }
+
+    getCurCmds(): MoveBallCommand[] {
+        let ret: MoveBallCommand[] = [];
+        this.cmdBuf.get(this.frameCnt)?.forEach(cmd => {
+            ret.push(cmd);
+        });
+        return ret;
+    }
+
+    simTick() {
+        if (!this.isInitialized || !this.canProceed()) return;
+        this.cmdBuf.get(this.frameCnt)?.forEach(cmd => {
+            this.state.execute(cmd, 1.0 / this.simRate);
+        });
+        this.cmdBuf.delete(this.frameCnt);
+        this.frameCnt++;
+    }
+
+    addCmd(cmd: MoveBallCommand) {
+        if (cmd.frame < this.frameCnt) return;
+        if (!this.cmdBuf.has(cmd.frame)) {
+            this.cmdBuf.set(cmd.frame, new Map<number, MoveBallCommand>());
+        }
+        this.cmdBuf.get(cmd.frame)?.set(cmd.ballId, cmd);
+
+    }
+    canProceed(): boolean {
+        if (this.cmdBuf.get(this.frameCnt)?.size !== this.playerCnt) {
+            return false;
+        }
+        return true;
     }
 }
 
@@ -150,17 +211,23 @@ export class MovingBallGame {
         this.state.balls.forEach((ball) => {
             this.canvas.drawCicle(ball.pos, ball.radius, ball.color);
         });
-        this.canvas.drawText("text");
+    }
+
+    drawText(text: string, pos: Vector2) {
+        this.canvas.drawText(text, pos);
     }
 
     update() { }
 
     simTick() { }
 
+    afterRender() {}
+
     start() {
         this.renderInterval = setInterval(() => {
             this.update();
             this.draw();
+            this.afterRender();
         }, 1000.0 / this.frameRate);
 
         this.simInterval = setInterval(() => {
@@ -205,7 +272,9 @@ class Canvas {
         this.ctx.fill();
     }
 
-    drawText(text: string) {
-        this.ctx.fillText(text, 0, 0);
+    drawText(text: string, pos: Vector2 = new Vector2(10, 30)) {
+        this.ctx.fillStyle = "white";
+        this.ctx.font = "20px Arial";
+        this.ctx.fillText(text, pos.x, pos.y);
     }
 }
