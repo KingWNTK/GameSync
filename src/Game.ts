@@ -1,247 +1,211 @@
-export class Vector2 {
-  x: number;
-  y: number;
-  constructor(x: number, y: number) {
-    this.x = x;
-    this.y = y;
-  }
-
-  clone(): Vector2 {
-    return new Vector2(this.x, this.y);
-  }
-
-  add(rhs: Vector2): Vector2 {
-    return new Vector2(this.x + rhs.x, this.y + rhs.y);
-  }
-}
-
-export class Vector3 {
-  x: number;
-  y: number;
-  z: number;
-  constructor(x: number, y: number, z: number) {
-    this.x = x;
-    this.y = y;
-    this.z = z;
-  }
-  add(rhs: Vector3): Vector3 {
-    return new Vector3(this.x + rhs.x, this.y + rhs.y, this.z + rhs.z);
-  }
-
-  clone(): Vector3 {
-    return new Vector3(this.x, this.y, this.z);
-  }
-
-  toColorString(): string {
-    return 'rgb(' + this.x + ',' + this.y + ',' + this.z + ')';
-  }
-}
-
-export enum SyncMode {
-  LockStep,
-  StateSync
-}
-
-export class Input {
-  pressed: boolean;
-  dir: Vector2;
-  constructor(dir: Vector2, pressed: boolean = false) {
-    this.pressed = pressed;
-    this.dir = dir;
-  }
-
-  update(val: boolean) {
-    this.pressed = val;
-  }
-
-  clone(): Input {
-    return new Input(this.dir.clone(), this.pressed);
-  }
-}
-
-// export class Command {
-//   seq: number;
-//   input: Input;
-//   ballId: number;
-//   ts: number;
-//   dt: number;
-
-//   constructor(seq: number, ballId: number, input: Input, ts: number, dt: number) {
-//     this.seq = seq;
-//     this.ballId = ballId;
-//     this.input = input;
-//     this.ts = ts;
-//     this.dt = dt;
-//   }
-
-//   clone() {
-//     return new Command(this.seq, this.ballId, this.input.clone(), this.ts, this.dt);
-//   }
-// }
+import { Vector2, Vector3 } from './common/Util.js';
 
 export type WASDInputs = [boolean, boolean, boolean, boolean];
 let defaultWASDInputs: WASDInputs = [false, false, false, false];
 
 export class MoveBallCommand {
-  simFrame: number;
-  inputs: WASDInputs;
-  ballId: number;
-  constructor(simFrame: number, ballId: number, inputs: WASDInputs = defaultWASDInputs) {
-    this.simFrame = simFrame;
-    this.ballId = ballId;
-    this.inputs = Object.assign([], inputs);
-  }
+    simFrame: number;
+    inputs: WASDInputs;
+    ballId: number;
+    constructor(simFrame: number, ballId: number, inputs: WASDInputs = defaultWASDInputs) {
+        this.simFrame = simFrame;
+        this.ballId = ballId;
+        this.inputs = Object.assign([], inputs);
+    }
 
-  clone() {
-    return new MoveBallCommand(this.simFrame, this.ballId, this.inputs);
-  }
-}
-
-export class AllBallsState {
-  balls: Ball[];
-  ts: number;
-  constructor(balls: Ball[], ts: number) {
-    this.balls = balls;
-    this.ts = ts;
-  }
+    clone() {
+        return new MoveBallCommand(this.simFrame, this.ballId, this.inputs);
+    }
 }
 
 export class Ball {
-  id: number;
-  pos: Vector2;
-  color: Vector3;
-  radius: number = 30;
-  speed: number = 100;
+    id: number;
+    pos: Vector2;
+    color: Vector3;
+    radius: number = 30;
+    speed: number = 100;
 
-  constructor(id: number, pos: Vector2 = new Vector2(0, 0), color: Vector3 = new Vector3(0, 0, 0)) {
-    this.id = id;
-    this.pos = pos;
-    this.color = color;
-  }
+    constructor(id: number, pos: Vector2 = new Vector2(0, 0), color: Vector3 = new Vector3(0, 0, 0)) {
+        this.id = id;
+        this.pos = pos;
+        this.color = color;
+    }
 
-  clone(): Ball {
-    let ret = new Ball(this.id, this.pos.clone(), this.color.clone());
-    ret.radius = this.radius;
-    ret.speed = this.speed;
-    return ret;
-  }
+    clone(): Ball {
+        let ret = new Ball(this.id, this.pos.clone(), this.color.clone());
+        ret.radius = this.radius;
+        ret.speed = this.speed;
+        return ret;
+    }
+}
+
+export class AllBallsState {
+    balls: Map<number, Ball>;
+    constructor(balls: Map<number, Ball> = new Map<number, Ball>()) {
+        this.balls = balls;
+    }
+
+    addBall(ball: Ball) {
+        this.balls.set(ball.id, ball);
+    }
+
+    removeBall(id: number) {
+        this.balls.delete(id);
+    }
+
+    getBall(id: number): Ball {
+        let ret = this.balls.get(id);
+        if (ret !== undefined) {
+            return ret;
+        }
+        else {
+            return new Ball(-1);
+        }
+    }
+
+    updateBall(id: number, pos: Vector2) {
+        this.getBall(id).pos = pos;
+    }
+
+    moveBallBySpeed(id: number, dir: Vector2, time: number) {
+        let ball = this.getBall(id);
+        ball.pos = ball.pos.add(new Vector2(dir.x * ball.speed * time, dir.y * ball.speed * time));
+    }
+
+    moveBallByPos(id: number, move: Vector2) {
+        this.getBall(id).pos = this.getBall(id).pos.add(move);
+    }
+
+    execute(cmd: MoveBallCommand, dt: number) {
+        cmd.inputs.forEach((val, idx) => {
+            if (val === true) {
+                this.moveBallBySpeed(cmd.ballId, MovingBallGame.inputDirs[idx], dt);
+            }
+        });
+    }
+
+    clone(): AllBallsState {
+        let bs = new Map<number, Ball>();
+        this.balls.forEach(b => {
+            bs.set(b.id, b.clone());
+        });
+        return new AllBallsState(bs);
+    }
 }
 
 export class MovingBallGame {
-  static inputDirs: [Vector2, Vector2, Vector2, Vector2] = [
-    new Vector2(0, -1),
-    new Vector2(-1, 0),
-    new Vector2(0, 1),
-    new Vector2(1, 0)
-  ];
-  canvas: Canvas;
-  balls: Map<number, Ball> = new Map<number, Ball>();
-  frameRate: number = 60;
-  simRate: number = 60;
+    static inputDirs: [Vector2, Vector2, Vector2, Vector2] = [
+        new Vector2(0, -1),
+        new Vector2(-1, 0),
+        new Vector2(0, 1),
+        new Vector2(1, 0)
+    ];
 
-  renderInterval: number = -1;
-  simInterval: number = -1;
+    state: AllBallsState;
 
-  constructor(canvas: any) {
-    this.canvas = new Canvas(canvas);
-    this.canvas.drawBg();
-  }
-  addBall(ball: Ball) {
-    this.balls.set(ball.id, ball);
-  }
+    frameRate: number = 60;
+    simRate: number = 60;
 
-  removeBall(id: number) {
-    this.balls.delete(id);
-  }
+    private renderInterval: number = -1;
+    private simInterval: number = -1;
 
-  getBall(id: number) {
-    let ret = this.balls.get(id);
-    if (ret !== undefined) {
-      return ret;
+    private canvas: Canvas;
+
+    constructor(canvas: any) {
+        this.canvas = new Canvas(canvas);
+        this.state = new AllBallsState();
+        this.canvas.drawBg();
     }
-    else {
-      return new Ball(-1);
+
+    addBall(ball: Ball) {
+        this.state.addBall(ball);
     }
-  }
 
-  updateBall(id: number, pos: Vector2) {
-    this.getBall(id).pos = pos;
-  }
-
-  moveBallBySpeed(id: number, dir: Vector2, time: number) {
-    let ball = this.getBall(id);
-    ball.pos = ball.pos.add(new Vector2(dir.x * ball.speed * time, dir.y * ball.speed * time));
-  }
-
-  moveBallByPos(id: number, move: Vector2) {
-    this.getBall(id).pos = this.getBall(id).pos.add(move);
-  }
-
-  execute(cmd: MoveBallCommand) {
-    cmd.inputs.forEach((val, idx) => {
-      if (val === true) {
-        this.moveBallBySpeed(cmd.ballId, MovingBallGame.inputDirs[idx], 1.0 / this.simRate);
-      }
-    });
-  }
-
-
-  draw() {
-    this.canvas.drawBg();
-    this.balls.forEach((ball) => {
-      this.canvas.drawCicle(ball.pos, ball.radius, ball.color);
-    })
-  }
-
-  update() { }
-
-  simTick() { }
-
-  start() {
-    this.renderInterval = setInterval(() => {
-      this.update();
-      this.draw();
-    }, 1000.0 / this.frameRate);
-
-    this.simInterval = setInterval(() => {
-      this.simTick();
-    }, 1000.0 / this.simRate);
-  }
-
-  pause() {
-    if (this.renderInterval !== -1) {
-      clearInterval(this.renderInterval);
-      this.renderInterval = -1;
+    removeBall(id: number) {
+        this.state.removeBall(id);
     }
-    if(this.simInterval !== -1) {
-      clearInterval(this.simInterval);
-      this.simInterval = -1;
+
+    getBall(id: number): Ball {
+        return this.state.getBall(id);
     }
-  }
+
+    updateBall(id: number, pos: Vector2) {
+        this.state.updateBall(id, pos);
+    }
+
+    moveBallBySpeed(id: number, dir: Vector2, time: number) {
+        this.state.moveBallBySpeed(id, dir, time);
+    }
+
+    moveBallByPos(id: number, move: Vector2) {
+        this.state.moveBallByPos(id, move);
+    }
+
+    execute(cmd: MoveBallCommand) {
+        this.state.execute(cmd, 1.0 / this.simRate);
+    }
+
+    draw() {
+        this.canvas.drawBg();
+        this.state.balls.forEach((ball) => {
+            this.canvas.drawCicle(ball.pos, ball.radius, ball.color);
+        });
+        this.canvas.drawText("text");
+    }
+
+    update() { }
+
+    simTick() { }
+
+    start() {
+        this.renderInterval = setInterval(() => {
+            this.update();
+            this.draw();
+        }, 1000.0 / this.frameRate);
+
+        this.simInterval = setInterval(() => {
+            this.simTick();
+        }, 1000.0 / this.simRate);
+    }
+
+    pause() {
+        if (this.renderInterval !== -1) {
+            clearInterval(this.renderInterval);
+            this.renderInterval = -1;
+        }
+        if (this.simInterval !== -1) {
+            clearInterval(this.simInterval);
+            this.simInterval = -1;
+        }
+    }
 }
 
 class Canvas {
-  ctx: CanvasRenderingContext2D;
-  height: number;
-  width: number;
-  bgColor: Vector3;
-  constructor(canvas: any) {
-    this.ctx = canvas.getContext('2d');
-    this.height = canvas.height;
-    this.width = canvas.width;
-    this.bgColor = new Vector3(100, 100, 100);
-  }
+    ctx: CanvasRenderingContext2D;
+    height: number;
+    width: number;
+    bgColor: Vector3;
+    constructor(canvas: any) {
+        this.ctx = canvas.getContext('2d');
+        this.height = canvas.height;
+        this.width = canvas.width;
+        this.bgColor = new Vector3(100, 100, 100);
+    }
 
-  drawBg() {
-    this.ctx.fillStyle = this.bgColor.toColorString();
-    this.ctx.fillRect(0, 0, this.width, this.height);
-  }
+    drawBg() {
+        this.ctx.fillStyle = this.bgColor.toColorString();
+        this.ctx.fillRect(0, 0, this.width, this.height);
+    }
 
-  drawCicle(pos: Vector2, radius: number, color: Vector3) {
-    this.ctx.fillStyle = color.toColorString();
-    this.ctx.beginPath();
-    this.ctx.arc(pos.x, pos.y, radius, 0, 180);
-    this.ctx.closePath();
-    this.ctx.fill();
-  }
+    drawCicle(pos: Vector2, radius: number, color: Vector3) {
+        this.ctx.fillStyle = color.toColorString();
+        this.ctx.beginPath();
+        this.ctx.arc(pos.x, pos.y, radius, 0, 180);
+        this.ctx.closePath();
+        this.ctx.fill();
+    }
+
+    drawText(text: string) {
+        this.ctx.fillText(text, 0, 0);
+    }
 }
