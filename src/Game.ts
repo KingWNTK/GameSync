@@ -13,6 +13,13 @@ export class MoveBallCommand {
         this.inputs = Object.assign([], inputs);
     }
 
+    isIdle(): boolean {
+        for(let i = 0; i < 4; i++) {
+            if(this.inputs[i]) return false;
+        }
+        return true;
+    }
+
     clone() {
         return new MoveBallCommand(this.frame, this.ballId, this.inputs);
     }
@@ -91,6 +98,7 @@ export class AllBallsState {
         });
     }
 
+
     clone(): AllBallsState {
         let bs = new Map<number, Ball>();
         this.balls.forEach(b => {
@@ -121,16 +129,16 @@ export class SimLayer {
         this.playerCnt = playerCnt;
     }
 
-    getCurCmds(): MoveBallCommand[] {
-        let ret: MoveBallCommand[] = [];
-        this.cmdBuf.get(this.frameCnt)?.forEach(cmd => {
-            ret.push(cmd);
-        });
-        return ret;
-    }
-
     simTick() {
         if (!this.isInitialized || !this.canProceed()) return;
+        this.cmdBuf.get(this.frameCnt)?.forEach(cmd => {
+            this.state.execute(cmd, 1.0 / this.simRate);
+        });
+        this.cmdBuf.delete(this.frameCnt);
+        this.frameCnt++;
+    }
+
+    tickAnyway() {
         this.cmdBuf.get(this.frameCnt)?.forEach(cmd => {
             this.state.execute(cmd, 1.0 / this.simRate);
         });
@@ -144,8 +152,20 @@ export class SimLayer {
             this.cmdBuf.set(cmd.frame, new Map<number, MoveBallCommand>());
         }
         this.cmdBuf.get(cmd.frame)?.set(cmd.ballId, cmd);
-
     }
+    
+    getCurCmdsArray(): MoveBallCommand[] {
+        let ret: MoveBallCommand[] = [];
+        this.cmdBuf.get(this.frameCnt)?.forEach(cmd => {
+            ret.push(cmd);
+        });
+        return ret;
+    }
+
+    getCmdsMap(frame: number): Map<number, MoveBallCommand> {
+        return this.cmdBuf.get(frame) || new Map<number, MoveBallCommand>();
+    }
+
     canProceed(): boolean {
         if (this.cmdBuf.get(this.frameCnt)?.size !== this.playerCnt) {
             return false;
@@ -166,6 +186,7 @@ export class MovingBallGame {
 
     frameRate: number = 60;
     simRate: number = 60;
+    tickRate: number = 10;
 
     private renderInterval: number = -1;
     private simInterval: number = -1;

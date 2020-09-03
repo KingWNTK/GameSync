@@ -65,6 +65,7 @@ export class NetConn {
     }
 
     send(msg: NetMsg) {
+        //let delta  = Math.random() > 0.5 ? -this.delay / 2 : this.delay / 2;
         net.send(msg, this.delay);
     }
 

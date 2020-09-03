@@ -4,8 +4,8 @@ import { MovingBallGame } from './Game.js';
 import { MovingBallGameClient } from './Client.js';
 import { MovingBallGameServer } from './Server.js';
 
-let client1 = new MovingBallGameClient(new MovingBallGame(document.querySelector('#canvas1')), 200);
-let client2 = new MovingBallGameClient(new MovingBallGame(document.querySelector('#canvas3')), 200);
+let client1 = new MovingBallGameClient(new MovingBallGame(document.querySelector('#canvas1')), 50);
+let client2 = new MovingBallGameClient(new MovingBallGame(document.querySelector('#canvas3')), 500);
 client2.setControlls([38, 37, 40, 39]);
 client1.start();
 client2.start();

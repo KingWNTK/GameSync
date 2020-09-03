@@ -1,4 +1,4 @@
-import { MovingBallGame, WASDInputs, MoveBallCommand, SimLayer } from './Game.js';
+import { MovingBallGame, WASDInputs, MoveBallCommand, SimLayer, AllBallsState } from './Game.js';
 import { NetConn, NetMsg, MsgType } from './Network.js';
 import { Vector2 } from './common/Util.js';
 
@@ -29,6 +29,8 @@ export class MovingBallGameClient {
     serverConn: NetConn | undefined;
     frameCnt: number = 0;
     pendingCommands: MoveBallCommand[] = [];
+    pendingStates: AllBallsState[] = [];
+    worstDelayFrames: number = 0;
 
     //Id of the player controlled ball
     ballId: number;
@@ -41,9 +43,13 @@ export class MovingBallGameClient {
         this.ballId = this.conn.connId;
         this.simLayer = new SimLayer();
         this.setControlls(this.controlls);
-
+        
         //register the render loop
         this.game.update = () => {
+            //Worst time delay for a input to be confirmed: RTT + serverTickInterval
+            //This is important because we always have to send the input for future logic frames
+            //Otherwise they will not catch up the server's next tick and be ignored consequently
+            this.worstDelayFrames = Math.ceil((this.conn.delay * 2 + 1000 / this.game.tickRate) / (1000 / this.game.simRate));        
             if(this.simLayer.isInitialized) {
                 this.update();
             }
@@ -51,7 +57,6 @@ export class MovingBallGameClient {
 
         //register the sim loop
         this.game.simTick = () => {
-            this.simLayer.simTick();
             this.simTick();
         };
 
@@ -62,21 +67,27 @@ export class MovingBallGameClient {
     }
 
     simTick() {
-        
-        //processInput
-        let cmd = new MoveBallCommand(this.frameCnt, this.ballId, this.inputs);
-        //this.simLayer.addCmd(cmd);
-        if (this.serverConn !== undefined) {
-            let len = this.pendingCommands.length;
-            if(len > 0 && this.pendingCommands[len - 1].frame == cmd.frame) {
-                let oldCmd = this.pendingCommands[0];
-                this.conn.send(new NetMsg(this.conn, this.serverConn, oldCmd.frame, oldCmd));
-            }
-            else {
-                this.pendingCommands.push(cmd);
-                this.conn.send(new NetMsg(this.conn, this.serverConn, cmd.frame, cmd));
-            }
+        this.simLayer.simTick();
+        if(this.simLayer.cmdBuf.size > 30) {
+            this.simLayer.simTick();
         }
+        //processInput
+        let cmd = new MoveBallCommand(this.simLayer.frameCnt + this.worstDelayFrames, this.ballId, this.inputs);
+        
+        if (this.serverConn !== undefined && !cmd.isIdle()) {
+            this.pendingCommands.push(cmd);
+            let state = this.simLayer.state;
+            let len = this.pendingStates.length;
+            if(len > 0) {
+                state = this.pendingStates[len - 1];
+            } 
+            let t = state.clone();
+            t.execute(cmd, 1.0 / this.game.simRate);
+            this.pendingStates.push(t);
+            this.conn.send(new NetMsg(this.conn, this.serverConn, cmd.frame, cmd));
+        }
+
+
 
         //process the msg from the network
         //first make a deep copy
@@ -90,9 +101,9 @@ export class MovingBallGameClient {
             }
             //Command
             else if (msg.type == MsgType.MoveBallCommand) {
-                // this.game.execute(msg.data);
                 while(this.pendingCommands.length > 0 && msg.frame >= this.pendingCommands[0].frame) {
                     this.pendingCommands.shift();
+                    this.pendingStates.shift();
                 }
                 msg.data.forEach((cmd: MoveBallCommand) => {
                     this.simLayer.addCmd(cmd);
@@ -100,17 +111,15 @@ export class MovingBallGameClient {
             }
             this.conn.msgBuf.shift();
         });
-
-        if(this.frameCnt <= this.simLayer.frameCnt + 20) {
-            this.frameCnt++;
-        }
     }
 
     update() {
-        
-        // let curTs: number = new Date().valueOf();
-        // this.preTs = curTs;
         this.game.state.updateTo(this.simLayer.state);
+
+        let len = this.pendingStates.length - 1;
+        if(len > 0) {
+            this.game.state.updateTo(this.pendingStates[len - 1]);
+        }
     }
 
     //Generate listener to the input events

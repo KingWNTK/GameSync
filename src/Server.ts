@@ -1,5 +1,5 @@
 import { Vector2, Vector3 } from './common/Util.js';
-import { MovingBallGame, Ball, SimLayer } from './Game.js';
+import { MovingBallGame, Ball, SimLayer, MoveBallCommand } from './Game.js';
 import { NetConn, NetMsg, MsgType } from './Network.js';
 import { MovingBallGameClient } from './Client.js';
 
@@ -11,8 +11,8 @@ export class MovingBallGameServer {
 
     conn: NetConn;
     clientConns: NetConn[] = [];
-    tickRate: number = 10;
     playerCnt: number;
+
     constructor(game: MovingBallGame, playerCnt: number) {
         this.game = game;
         this.conn = new NetConn(++MovingBallGameServer.totServers);
@@ -20,7 +20,7 @@ export class MovingBallGameServer {
         this.playerCnt = playerCnt;
         let interval = setInterval(() => {
             this.tick();
-        }, 1000.0 / this.tickRate);
+        }, 1000.0 / this.game.tickRate);
 
         this.game.update = () => {
             this.game.state.updateTo(this.simLayer.state);
@@ -46,28 +46,43 @@ export class MovingBallGameServer {
         let curMsgBuf: NetMsg[] = [];
         Object.assign(curMsgBuf, this.conn.msgBuf);
 
-        //sort these commands
-
-        //replay all the commands
         curMsgBuf.forEach(msg => {
-            // console.log(msg);
-            // this.game.execute(msg.data);
             this.simLayer.addCmd(msg.data);
-
             //this msg is received, remove it now
             this.conn.msgBuf.shift();
         });
 
-        if (!this.simLayer.canProceed()) {
-            // this.simLayer.frameCnt++;
+        let ticksToProceed = this.game.simRate / this.game.tickRate;
+
+        let curSendBuf: MoveBallCommand[][] = [];
+
+        for(let i = 0; i < ticksToProceed; i++) {
+            if(!this.simLayer.isInitialized) return;
+            let frame = this.simLayer.frameCnt;
+            let cmds = this.simLayer.getCmdsMap(frame);
+            if(this.simLayer.canProceed()) {
+                this.simLayer.simTick();
+            }
+            else {
+                this.simLayer.tickAnyway();
+            }
+            //Fill the missing commands
+            this.clientConns.forEach(conn => {
+                if(cmds?.has(conn.connId) !== true) {
+                    cmds?.set(conn.connId, new MoveBallCommand(frame, conn.connId));
+                }
+            });
+
+            let tmp: MoveBallCommand[] = [];
+            cmds?.forEach(cmd => tmp.push(cmd));
+            curSendBuf.push(tmp);
         }
 
-        while (this.simLayer.canProceed()) {
+        curSendBuf.forEach(cmds => {
             this.clientConns.forEach(clientConn => {
-                this.conn.send(new NetMsg(this.conn, clientConn, this.simLayer.frameCnt, Object.assign([], this.simLayer.getCurCmds())));
+                this.conn.send(new NetMsg(this.conn, clientConn, cmds[0].frame, Object.assign([], cmds)));
             });
-            this.simLayer.simTick();
-        }
+        });
     }
 
     start() {
